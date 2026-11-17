@@ -129,16 +129,45 @@ function breathStart(){stop();breathToken++;let token=breathToken;breathStarted=
   ['M186 220 L198 110 Q201 91 217 97','M217 97 Q233 102 229 120 L214 258']
  ];
  const names=['Thumb','Index','Middle','Ring','Little'];
- const svg=document.querySelector('#fiveSvg');const pathCache=pathParts.map(pair=>pair.map(d=>{const el=document.createElementNS('http://www.w3.org/2000/svg','path');el.setAttribute('d',d);svg.appendChild(el);el.style.display='none';return el}));
+ const svg=document.querySelector('#fiveSvg'),dot=document.querySelector('#fingerDot');
+ if(!svg||!dot)return;
+ // Keep measurement paths in the SVG rendering tree: display:none can make
+ // getTotalLength/getPointAtLength unreliable in desktop browsers.
+ const pathCache=pathParts.map(pair=>pair.map(d=>{
+  const el=document.createElementNS('http://www.w3.org/2000/svg','path');
+  el.setAttribute('d',d);el.setAttribute('fill','none');
+  el.setAttribute('stroke','none');el.setAttribute('visibility','hidden');
+  svg.appendChild(el);return el;
+ }));
+ const samples=pathCache.map(pair=>pair.map(el=>{
+  const length=el.getTotalLength();
+  return t=>el.getPointAtLength(Math.max(0,Math.min(length,t*length)));
+ }));
+ const point=(i,half,t)=>samples[i][half](t);
+ const blend=(p,q,t)=>({x:p.x+(q.x-p.x)*t,y:p.y+(q.y-p.y)*t});
  let previousIndex=-1,previousUp=null;
- function tick(now){if(token!==breathToken||page!=='breath')return;
-  const sec=(now-start)/1000,cycle=sec%40,idx=Math.floor(cycle/8),part=cycle%8,up=part<4,progress=up?part/4:(part-4)/4;
-  const path=pathCache[idx][up?0:1],length=path.getTotalLength(),p=path.getPointAtLength(Math.min(length,progress*length));
-  const dot=document.querySelector('#fingerDot');if(dot){dot.setAttribute('cx',p.x.toFixed(2));dot.setAttribute('cy',p.y.toFixed(2));}
-  if(idx!==previousIndex||up!==previousUp){previousIndex=idx;previousUp=up;label.textContent=up?'Breathe in through your nose':'Breathe out through your mouth';document.querySelector('#fingerName').textContent=names[idx]+' · '+(idx+1)+' of 5';document.querySelector('#fingerDirection').textContent=up?'Breathe IN · follow the dot UP':'Breathe OUT · follow the dot DOWN';}
+ function tick(now){
+  if(token!==breathToken||page!=='breath')return;
+  const sec=(now-start)/1000,cycle=sec%40,idx=Math.min(4,Math.floor(cycle/8));
+  const phase=cycle%8,up=phase<4,half=up?0:1,elapsed=phase%4;
+  let p;
+  if(elapsed<3.45){p=point(idx,half,elapsed/3.45)}
+  else {
+   const nextHalf=up?1:0,nextIdx=up?idx:(idx+1)%5;
+   p=blend(point(idx,half,1),point(nextIdx,nextHalf,0),(elapsed-3.45)/0.55);
+  }
+  dot.setAttribute('cx',p.x.toFixed(2));dot.setAttribute('cy',p.y.toFixed(2));
+  if(idx!==previousIndex||up!==previousUp){
+   previousIndex=idx;previousUp=up;
+   label.textContent=up?'Breathe in through your nose':'Breathe out through your mouth';
+   document.querySelector('#fingerName').textContent=names[idx]+' · '+(idx+1)+' of 5';
+   document.querySelector('#fingerDirection').textContent=up?'Breathe IN · follow the dot UP':'Breathe OUT · follow the dot DOWN';
+  }
   info.textContent='Follow the glowing dot gently. In through your nose, out through your mouth.';
-  breathingFrame=requestAnimationFrame(tick)
- }breathingFrame=requestAnimationFrame(tick);return;}
+  breathingFrame=requestAnimationFrame(tick);
+ }
+ breathingFrame=requestAnimationFrame(tick);return;
+}
  const phases=currentBreath==='box'?[['Breathe in through your nose',5],['Pause gently (optional)',2],['Breathe out through your mouth',5],['Pause gently (optional)',2]]:currentBreath==='bee'?[['Breathe in through your nose',4],['Hum gently as you breathe out',5]]:[['Breathe in through your nose',4],['Breathe out through your mouth',5]];let total=phases.reduce((s,p)=>s+p[1],0);function update(){if(page!=='breath'||token!==breathToken)return;let t=((performance.now()-start)/1000)%total,ix=0;while(t>=phases[ix][1])t-=phases[ix++][1];label.textContent=phases[ix][0];info.textContent=Math.ceil(phases[ix][1]-t)+' seconds · Breathe comfortably';if(currentBreath==='balloon'){let o=document.querySelector('#orb');if(o){o.style.transition='transform '+phases[ix][1]+'s linear';o.className='breathorb '+(ix===0?'in':'out')}}if(currentBreath==='box'){let dot=document.querySelector('#boxDot');if(dot)dot.classList.add('box-flow')}}update();breathTimer=setInterval(update,150)}
 const symbols=['⭐','🌙','🍀','💎','🌸','☀️','🐧','🎈'];let memoryState='setup',memoryRound=0,memoryInput=[],memoryRunPoints=0;function newPattern(){pattern=Array.from({length:3+Math.floor(memoryRound/2)},()=>symbols[Math.floor(Math.random()*symbols.length)]);memoryInput=[];memoryState='preview';renderMemory();let started=performance.now();clearInterval(memTimer);memTimer=setInterval(()=>{let left=Math.max(0,preview-(performance.now()-started)/1000);let el=document.querySelector('#memoryCountdown'),bar=document.querySelector('#memoryProgress');if(el)el.textContent=left.toFixed(1)+'s';if(bar)bar.style.width=(left/preview*100)+'%';if(left<=0){clearInterval(memTimer);memTimer=null;memoryState='answer';renderMemory()}},50)}function renderMemory(){page='memory';app.innerHTML=`<div class="panel"><button data-go="gym">← Brain Gym</button><h2>🧠 Memory Sprint</h2><p class="sub">Remember the symbols and earn ⭐ 10 points for every correct pattern. One mistake ends the round.</p><p class="pill">⭐ This run: ${memoryRunPoints} · Total: ${points.toLocaleString()}</p>${memoryState==='setup'?`<p>Choose your preview time:</p><div class="row">${[2,3,5,7,9].map(n=>`<button data-preview="${n}" class="${preview===n?'primary':''}">${n}s</button>`).join('')}</div><div class="row"><button class="primary" data-action="memStart">Start five-pattern challenge</button></div>`:memoryState==='preview'?`<p class="pill">Pattern ${memoryRound+1}/5 · Remember the order</p><div class="memory-count" id="memoryCountdown" role="timer" aria-live="off">${preview.toFixed(1)}s</div><div class="memory-progress"><div id="memoryProgress"></div></div><div class="garden memorySymbols">${pattern.join(' ')}</div><p class="center">Remember these symbols!</p>`:memoryState==='answer'?`<p class="pill">Pattern ${memoryRound+1}/5</p><div class="garden memorySymbols">${memoryInput.join(' ')||'?'}</div><div class="symbols">${symbols.map((s,i)=>`<button data-symbol="${i}">${s}</button>`).join('')}</div>`:`<div class="garden"><div class="big">${memoryRound}/5</div><p>⭐ ${memoryRunPoints} points earned this run!</p><p>${memoryRound===5?'You completed all five patterns!':'Your streak ended. You can try again.'}</p></div><button data-action="memReset">Choose a new time</button>`}</div>`}
 let miniRound=0,miniScore=0,miniAnswer=0,reactReady=false,reactAt=0,reactTimer=0,reactDeadline=0,miniLock=false,colourStartedAt=0;
